@@ -19,6 +19,12 @@ npm run dev
 
 `npm run build` creates a static site in `dist/` that can be uploaded to any web host.
 
+### GitHub Pages
+
+`.github/workflows/deploy.yml` builds and publishes the site on every push to `main`. One-time
+setup in the GitHub repo: **Settings → Pages → Source: GitHub Actions**. The site is then at
+`https://<username>.github.io/<repo>/` (admin at `…/#/admin`).
+
 ## Replacing the placeholders
 
 | What | Where |
