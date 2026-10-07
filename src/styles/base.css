@@ -1,0 +1,630 @@
+/* Design tokens, reset and components shared by every page. */
+
+:root {
+  --main: #c8461b; /* store theme colour: buttons, active category, links */
+  --main-dark: color-mix(in srgb, var(--main) 84%, #000); /* hover / pressed */
+  --main-soft: color-mix(in srgb, var(--main) 9%, #fff); /* light tint behind highlights */
+  --nav-h: 72px;
+  --bg: #f6f5f3;
+  --list-bg: #f6f5f3;
+  --grey-btn: #efedea;
+  --ink: #1c1917; /* headings and strong text */
+  --text: #292524;
+  --muted: #6b6560;
+  --line: #eeece9;
+  --border: #dcd8d3;
+  --danger: #dc2626;
+  --success: #15803d;
+  --success-soft: #e8f5ec;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(28, 25, 23, 0.05), 0 2px 8px rgba(28, 25, 23, 0.05);
+  --shadow-hover: 0 4px 10px rgba(28, 25, 23, 0.06), 0 12px 28px rgba(28, 25, 23, 0.1);
+  --popup-shadow: 0 10px 30px rgba(28, 25, 23, 0.12), 0 30px 60px rgba(28, 25, 23, 0.1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Like the original, the storefront hides the page scrollbar (scrolling still works),
+   so the menu grid gets the full window width. */
+html:has(.store) {
+  scrollbar-width: none;
+}
+
+html:has(.store)::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  margin: 0;
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 16px;
+  line-height: 1.5715;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mobile layout (the original switches at 600px). */
+@media (max-width: 600px) {
+  :root {
+    --nav-h: 56px;
+  }
+  body {
+    font-size: 14px;
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul {
+  margin: 0;
+}
+
+img {
+  display: block;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 2px;
+}
+
+@media (min-width: 601px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .pc-only {
+    display: none !important;
+  }
+}
+
+.ml-8 {
+  margin-left: 8px;
+}
+
+.ml-16 {
+  margin-left: 16px;
+}
+
+.mr-16 {
+  margin-right: 16px;
+}
+
+.mx-16 {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+/* ---------- Overlays ---------- */
+
+.mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-y: auto;
+  background: rgba(28, 25, 23, 0.5);
+  animation: fade-in 0.2s ease-out;
+}
+
+.mask--center {
+  align-items: center;
+}
+
+.modal {
+  position: relative;
+  background: #fff;
+  animation: zoom-in 0.2s ease-out;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: var(--popup-shadow);
+}
+
+.drawer--left {
+  left: 0;
+  animation: slide-from-left 0.3s ease-out;
+}
+
+.drawer--right {
+  right: 0;
+  animation: slide-from-right 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes slide-from-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .modal,
+  .drawer {
+    animation: none;
+  }
+}
+
+/* Small message box with a title bar ("Info", confirmations). */
+.dialog {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  margin: 100px 0 24px;
+  border-radius: var(--radius);
+  box-shadow: var(--popup-shadow);
+}
+
+.dialog-head {
+  padding: 18px 24px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.dialog-body {
+  padding: 8px 24px 20px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 24px 20px;
+}
+
+/* ---------- Buttons ---------- */
+
+/* Grey pill used in the top bar ("Delivery・Time", "Login", "Filters"...). */
+.top-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 12px 16px;
+  border-radius: 20px;
+  background: var(--grey-btn);
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.top-btn:hover:not(:disabled) {
+  background: #e6e3df;
+}
+
+.top-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.top-btn--black {
+  background: var(--main);
+  color: #fff;
+}
+
+.top-btn--black:hover:not(:disabled) {
+  background: var(--main-dark);
+}
+
+.top-btn:disabled {
+  opacity: 0.5;
+}
+
+.top-btn-icon {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 4px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-sm:hover {
+  background: var(--bg);
+}
+
+.btn-sm--black {
+  border-color: var(--main);
+  background: var(--main);
+  color: #fff;
+}
+
+.btn-sm--black:hover {
+  border-color: var(--main-dark);
+  background: var(--main-dark);
+}
+
+.btn-sm--danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-sm--danger:hover {
+  background: #b91c1c;
+}
+
+.btn-sm--danger-outline {
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+.btn-sm--danger-outline:hover {
+  background: #fef2f2;
+}
+
+.btn-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 54px;
+  border-radius: 14px;
+  font-size: 17px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn-block:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.btn-black {
+  background: var(--main);
+  color: #fff;
+}
+
+.btn-black:hover:not(:disabled) {
+  background: var(--main-dark);
+}
+
+.btn-black:disabled {
+  background: #cfcac4;
+}
+
+.btn-outline {
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+}
+
+.btn-outline:hover {
+  border-color: var(--ink);
+}
+
+.btn-bold {
+  font-weight: 700;
+}
+
+.link-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.link-btn:hover {
+  background: var(--grey-btn);
+}
+
+.link-btn--danger {
+  color: var(--danger);
+}
+
+.link-btn--danger:hover {
+  background: #fef2f2;
+}
+
+.icon-btn {
+  display: flex;
+  padding: 6px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+.icon-btn:hover {
+  background: var(--grey-btn);
+}
+
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Small grey pill ("Change", "Edit"). */
+.more-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 60px;
+  height: 30px;
+  border-radius: 15px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: box-shadow 0.15s;
+}
+
+.more-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.more-chip--wide {
+  width: auto;
+  padding: 0 14px;
+}
+
+/* ---------- Bits ---------- */
+
+/* Count bubble (items in the cart, active orders). */
+.badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.tag-mini {
+  padding: 0 9px;
+  border-radius: 10px;
+  background: var(--main-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--main-dark);
+  white-space: nowrap;
+}
+
+/* "Free delivery" text. */
+.free-note {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--success);
+}
+
+/* Tag chips (Filters panel and admin form). */
+.tag-group-title {
+  margin: 20px 0 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  font-size: 16px;
+  color: var(--text);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--ink);
+}
+
+.chip--on,
+.chip--on:hover {
+  border-color: var(--main);
+  background: var(--main);
+  color: #fff;
+}
+
+.chips--sm .chip {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+/* Quantity − n + */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 3px;
+  border-radius: 20px;
+  background: var(--grey-btn);
+}
+
+.stepper button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.1);
+  transition: transform 0.1s;
+}
+
+.stepper button:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.stepper button:last-child {
+  background: var(--main);
+  color: #fff;
+}
+
+.stepper button:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+.stepper svg {
+  width: 16px;
+  height: 16px;
+}
+
+.stepper-value {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ---------- Form fields ---------- */
+
+.input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 16px;
+  outline: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+textarea.input {
+  resize: vertical;
+}
+
+.input:focus,
+.input:focus-within {
+  border-color: var(--main);
+  box-shadow: 0 0 0 3px var(--main-soft);
+}
+
+.input--error,
+.text-field--error {
+  border-color: var(--danger) !important;
+}
+
+.input-prefix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.input-prefix input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px;
+}
+
+.field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.field-hint {
+  font-size: 13px;
+  color: var(--muted);
+}

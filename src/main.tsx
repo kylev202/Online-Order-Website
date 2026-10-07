@@ -1,0 +1,16 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import { store } from './config/store';
+import './styles/base.css';
+import './styles/store.css';
+import './styles/pages.css';
+import './styles/admin.css';
+
+document.title = store.name;
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
