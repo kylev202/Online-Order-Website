@@ -21,10 +21,13 @@ interface Options {
 
 /** Calls the shop API (worker/), e.g. api('menu') → GET /api/menu. */
 export async function api<T>(path: string, { method, body, file }: Options = {}): Promise<T> {
+  method ??= body === undefined && !file ? 'GET' : 'POST';
+  // GitHub Pages preview (`npm run build:pages`): there is no server, so a stand-in answers in the browser.
+  if (import.meta.env.MODE === 'pages') return (await import('./demoApi')).demoApi<T>(path, method, body, file);
   let response: Response;
   try {
     response = await fetch(`/api/${path}`, {
-      method: method ?? (body === undefined && !file ? 'GET' : 'POST'),
+      method,
       headers: file ? { 'Content-Type': file.type } : body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: file ?? (body !== undefined ? JSON.stringify(body) : undefined),
       credentials: 'same-origin',

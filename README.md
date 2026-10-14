@@ -58,8 +58,19 @@ exist (*Settings → Secrets and variables → Actions*), applies database migra
   permissions.
 - `CLOUDFLARE_ACCOUNT_ID`: shown on the Cloudflare dashboard.
 
-Without them the workflow only checks that the site builds. GitHub Pages is no longer used (it can't
-run the API, and its terms don't allow shops); switch it off under *Settings → Pages*.
+Without them the workflow only checks that the site builds.
+
+### Client preview (GitHub Pages)
+
+`.github/workflows/pages.yml` publishes a preview to https://kylev202.github.io/Online-Order-Website/
+on every push to `main`, built with `npm run build:pages`. Pages can't run the API, so in the preview
+`src/lib/demoApi.ts` stands in for it inside the browser: the menu starts from the catalogue
+migration, and orders, menu edits and the owner login (password `demo1234`) are kept in that
+browser only, so an order placed on one device does not show on another. Try the owner side in the
+same browser, e.g. a second tab.
+
+The preview is temporary (Pages can't run the real shop, and its terms don't allow shops). Once the
+client has signed off, delete `pages.yml` and switch Pages off under *Settings → Pages*.
 
 ### Database changes
 
