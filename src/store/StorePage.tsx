@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PoweredBy } from '../components/controls';
 import { TAG_GROUPS } from '../data/tags';
-import { useMenu } from '../lib/menuStore';
+import { loadMenu, useMenu, useMenuStatus } from '../lib/menuStore';
 import { cartItems, useOrder } from '../lib/orderStore';
 import { navigate } from '../lib/router';
 import type { Product } from '../lib/types';
@@ -32,6 +32,7 @@ type Overlay = 'menu' | 'filters' | 'fulfillment' | 'checkout' | null;
 
 export function StorePage() {
   const menu = useMenu();
+  const menuStatus = useMenuStatus();
   const order = useOrder();
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<string[]>([]);
@@ -162,7 +163,20 @@ export function StorePage() {
             </div>
           </section>
         ))}
-        {sections.length === 0 && <p className="menu-empty">No products found.</p>}
+        {menuStatus === 'loading' && (
+          <p className="menu-empty" role="status">
+            Loading products…
+          </p>
+        )}
+        {menuStatus === 'error' && (
+          <div className="menu-empty" role="alert">
+            <p>We can’t load the products right now.</p>
+            <button className="top-btn menu-retry" onClick={() => loadMenu()}>
+              Try Again
+            </button>
+          </div>
+        )}
+        {menuStatus === 'ready' && sections.length === 0 && <p className="menu-empty">No products found.</p>}
         <PoweredBy className="powered" />
       </main>
 

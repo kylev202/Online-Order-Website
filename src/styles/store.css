@@ -545,6 +545,10 @@
   color: var(--muted);
 }
 
+.menu-retry {
+  margin-top: 12px;
+}
+
 .powered {
   display: flex;
   justify-content: center;
@@ -682,12 +686,6 @@
 
 .side-btn:hover {
   background: #e6e3df;
-}
-
-.side-btn--black,
-.side-btn--black:hover {
-  background: var(--main);
-  color: #fff;
 }
 
 .side-foot {
@@ -867,11 +865,12 @@
   overflow-y: auto;
 }
 
+/* contain: product photos are square packshots, so show the whole product. */
 .pm-img {
   width: 100%;
   height: 320px;
-  object-fit: cover;
-  background: var(--bg);
+  object-fit: contain;
+  background: #fff;
 }
 
 .pm-body {

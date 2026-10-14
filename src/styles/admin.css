@@ -384,6 +384,58 @@
   color: var(--success);
 }
 
+.order-step:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* Grey head and faded details for cancelled orders. */
+.order-card--cancelled .admin-cat-head {
+  background: #78716c;
+}
+
+.order-card--cancelled .order-card-when {
+  color: #57534e;
+}
+
+.order-card--cancelled .order-card-body {
+  opacity: 0.6;
+}
+
+.order-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: #fbfaf9;
+}
+
+.order-card-foot--end {
+  justify-content: flex-end;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* While the owner's login is being checked. */
+.admin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.form-error {
+  margin: 0 24px 4px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 14px;
+}
+
 /* Product / category form popup */
 
 .form-modal {

@@ -1,43 +1,20 @@
 import { useSyncExternalStore } from 'react';
-import { seedMenu } from '../data/seedMenu';
+import { api } from './api';
+import { ownerApi } from './ownerSession';
 import type { Category, Menu, Product } from './types';
 
-// Demo persistence: the menu lives in this browser's localStorage.
-// Swap these functions for API calls when the backend is built.
-const KEY = 'ordering-demo.menu.v2';
+// The catalogue lives on the server. Owner edits are saved there first, then the menu is reloaded,
+// so the page always shows what customers see.
+export type MenuStatus = 'loading' | 'ready' | 'error';
+
+let menu: Menu = { categories: [], products: [] };
+let status: MenuStatus = 'loading';
+let latestRequest = 0;
 const listeners = new Set<() => void>();
-
-function readSaved(): Menu {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Menu;
-  } catch {
-    // Unreadable or blocked storage: fall back to the sample menu.
-  }
-  return seedMenu;
-}
-
-let menu = readSaved();
 
 function emit() {
   listeners.forEach((listener) => listener());
 }
-
-// Saves before updating memory, so the page never shows changes that were not saved.
-// Throws when the browser's storage is full (e.g. too many large images).
-function commit(next: Menu) {
-  localStorage.setItem(KEY, JSON.stringify(next));
-  menu = next;
-  emit();
-}
-
-// Keep other open tabs (e.g. storefront + admin) in sync.
-window.addEventListener('storage', (event) => {
-  if (event.key === KEY) {
-    menu = readSaved();
-    emit();
-  }
-});
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -48,36 +25,61 @@ export function useMenu(): Menu {
   return useSyncExternalStore(subscribe, () => menu);
 }
 
+export function useMenuStatus(): MenuStatus {
+  return useSyncExternalStore(subscribe, () => status);
+}
+
+/** Loads the menu from the server. If a reload fails, the menu already shown stays. */
+export async function loadMenu() {
+  const request = ++latestRequest;
+  if (status === 'error') {
+    status = 'loading';
+    emit();
+  }
+  try {
+    const next = await api<Menu>('menu');
+    if (request !== latestRequest) return; // a newer reload has started
+    menu = next;
+    status = 'ready';
+  } catch {
+    if (request !== latestRequest || status === 'ready') return;
+    status = 'error';
+  }
+  emit();
+}
+
+loadMenu();
+
 export function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function upsert<T extends { id: string }>(list: T[], item: T) {
-  return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
+function dataUrlToBlob(dataUrl: string) {
+  const [header, base64] = dataUrl.split(',');
+  const type = /^data:([^;]+)/.exec(header)?.[1] ?? 'image/jpeg';
+  return new Blob([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], { type });
 }
 
-export function saveProduct(product: Product) {
-  commit({ ...menu, products: upsert(menu.products, product) });
+/** Owner: adds or updates a product. A newly chosen photo (data URL) is uploaded first. */
+export async function saveProduct(product: Product) {
+  let { image } = product;
+  if (image.startsWith('data:')) image = (await ownerApi<{ url: string }>('admin/images', { file: dataUrlToBlob(image) })).url;
+  await ownerApi(`admin/products/${product.id}`, { method: 'PUT', body: { ...product, image } });
+  await loadMenu();
 }
 
-export function deleteProduct(id: string) {
-  commit({ ...menu, products: menu.products.filter((p) => p.id !== id) });
+export async function deleteProduct(id: string) {
+  await ownerApi(`admin/products/${id}`, { method: 'DELETE' });
+  await loadMenu();
 }
 
-export function saveCategory(category: Category) {
-  commit({ ...menu, categories: upsert(menu.categories, category) });
+export async function saveCategory(category: Category) {
+  await ownerApi(`admin/categories/${category.id}`, { method: 'PUT', body: { name: category.name } });
+  await loadMenu();
 }
 
-// Deleting a category also deletes the products in it.
-export function deleteCategory(id: string) {
-  commit({
-    categories: menu.categories.filter((c) => c.id !== id),
-    products: menu.products.filter((p) => p.categoryId !== id),
-  });
-}
-
-export function resetMenu() {
-  localStorage.removeItem(KEY);
-  menu = seedMenu;
-  emit();
+/** Deleting a category also deletes the products in it. */
+export async function deleteCategory(id: string) {
+  await ownerApi(`admin/categories/${id}`, { method: 'DELETE' });
+  await loadMenu();
 }

@@ -24,9 +24,10 @@ export const store = {
     { day: 'Saturday', open: '09:00', close: '21:00' },
     { day: 'Sunday', open: '09:00', close: '21:00' },
   ] as DayHours[],
-  // Shown as a full-screen notice when the site first opens.
+  // Customers confirm this age when the site opens and again at checkout; the driver checks photo ID.
+  minimumAge: 18,
+  // Shown with the age check when the site first opens.
   notice: {
-    showOnLoad: true,
     title: 'Store Notice',
     headline: '✅ NOTICE:',
     points: [
@@ -35,7 +36,5 @@ export const store = {
     ],
   },
   poweredBy: { label: 'Your Company', url: '#' },
-  // DEMO ONLY: the owner passcode lives in the browser code, so it is not real security.
-  // A production site must check the owner's login on a server.
-  adminPasscode: '1234',
+  // The owner password is not here: it is the ADMIN_PASSWORD secret on the server (see README).
 };

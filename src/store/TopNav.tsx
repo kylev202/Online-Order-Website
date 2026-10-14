@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CloseCircleIcon, GlobeIcon, MenuCircleIcon, SearchIcon, SlidersIcon, UserIcon, UserSolidIcon } from '../components/icons';
-import { navigate } from '../lib/router';
+import { CloseCircleIcon, GlobeIcon, MenuCircleIcon, SearchIcon, SlidersIcon } from '../components/icons';
 
 interface Props {
   /** Solid black bar with search, shown once the menu is scrolled to the top. */
@@ -29,8 +28,8 @@ export function TopNav({ solid, query, onQuery, onSearchFocus, deliveryLabel, on
             <SearchIcon className="search-icon" />
             <input
               value={query}
-              placeholder="Search dishes..."
-              aria-label="Search dishes"
+              placeholder="Search products..."
+              aria-label="Search products"
               onChange={(e) => onQuery(e.target.value)}
               onFocus={() => onSearchFocus(true)}
               onBlur={() => onSearchFocus(false)}
@@ -54,16 +53,6 @@ export function TopNav({ solid, query, onQuery, onSearchFocus, deliveryLabel, on
       <div className="nav-right">
         <button className="top-btn pc-only mr-16" onClick={onOpenFulfillment}>
           Delivery・{deliveryLabel}
-        </button>
-        <button className="top-btn pc-only" onClick={() => navigate('/login')}>
-          <UserSolidIcon className="top-btn-icon" />
-          <span className="ml-8">Login</span>
-        </button>
-        <button className="top-btn pc-only mx-16" onClick={() => navigate('/signup')}>
-          Sign Up
-        </button>
-        <button className="round-icon mobile-only" aria-label="Account" onClick={() => navigate('/login')}>
-          <UserIcon size={18} />
         </button>
         {/* The language button sits in the black bar on desktop, and on the cover on mobile. */}
         {solid ? <LanguageMenu className="pc-only" light /> : <LanguageMenu className="mobile-only ml-16" />}

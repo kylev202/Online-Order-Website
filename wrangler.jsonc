@@ -1,0 +1,30 @@
+// Cloudflare Worker: serves the website (dist/client) and the shop API (worker/).
+// Before the first deploy, replace database_id with the id printed by
+// `npx wrangler d1 create online-order-db` (see README → Deploying).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "online-order-website",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    // Hash routes (#/admin, #/order/…) all load the same page.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/images/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "online-order-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "online-order-images"
+    }
+  ],
+  "observability": { "enabled": true },
+  "upload_source_maps": true
+}

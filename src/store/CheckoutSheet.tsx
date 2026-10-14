@@ -1,13 +1,13 @@
 import { useMemo, useRef, useState, type InputHTMLAttributes } from 'react';
 import { CountryCode, Stepper } from '../components/controls';
-import { CreditCardIcon, LockIcon, MapPinIcon, TruckIcon, WalletIcon } from '../components/icons';
+import { MapPinIcon, TruckIcon, WalletIcon } from '../components/icons';
 import { BottomSheet } from '../components/overlays';
 import { store } from '../config/store';
-import { cardErrors, digitsOnly, formatCardNumber, formatExpiry, type Card, type CardErrors } from '../lib/card';
+import { ApiError, errorMessage } from '../lib/api';
 import { formatPrice } from '../lib/format';
-import { useMenu, newId } from '../lib/menuStore';
+import { loadMenu, useMenu } from '../lib/menuStore';
 import { cartItems, clearCart, setQty, useOrder } from '../lib/orderStore';
-import { saveOrder, type Order } from '../lib/orders';
+import { placeOrder } from '../lib/orders';
 import { FulfillmentModal } from './FulfillmentModal';
 
 interface Details {
@@ -23,14 +23,14 @@ interface Details {
 type DetailErrors = Partial<Record<keyof Details, string>>;
 
 const EMPTY_DETAILS: Details = { name: '', country: 'AU', phone: '', street: '', suburb: '', postcode: '', instructions: '' };
-const EMPTY_CARD: Card = { number: '', expiry: '', cvc: '', name: '' };
 
 const hasErrors = (errors: object) => Object.values(errors).some(Boolean);
+const digitsOnly = (text: string) => text.replace(/\D/g, '');
 
 /**
  * Two-step checkout, like the original site's bottom panel:
- * 1. Fulfillment: items + delivery details. 2. Payment: card or wallet, then pay.
- * DEMO: no payment is taken; a successful "payment" creates an order to track.
+ * 1. Delivery: items + delivery details. 2. Payment: pay on delivery, confirm age, place the order.
+ * Online card payment slots into step 2 once a payment provider is connected.
  */
 export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid: (orderId: string) => void }) {
   const menu = useMenu();
@@ -42,11 +42,11 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
   const [step, setStep] = useState<'delivery' | 'payment'>('delivery');
   const [details, setDetails] = useState(EMPTY_DETAILS);
   const [detailErrors, setDetailErrors] = useState<DetailErrors>({});
-  const [method, setMethod] = useState<'card' | 'wallet'>('card');
-  const [card, setCard] = useState(EMPTY_CARD);
-  const [cardErrs, setCardErrs] = useState<CardErrors>({});
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [ageError, setAgeError] = useState('');
+  const [orderError, setOrderError] = useState('');
   const [changingTime, setChangingTime] = useState(false);
-  const [paying, setPaying] = useState(false);
+  const [placing, setPlacing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const setDetail = (field: keyof Details, value: string) => {
@@ -54,17 +54,12 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
     setDetailErrors((e) => ({ ...e, [field]: undefined }));
   };
 
-  const setCardField = (field: keyof Card, value: string) => {
-    setCard((c) => ({ ...c, [field]: value }));
-    setCardErrs((e) => ({ ...e, [field]: undefined }));
-  };
-
   // The sheet body (parent of the content) is what scrolls. Runs after React has re-rendered.
   const scrollBody = (to: 'top' | 'first-error') =>
     requestAnimationFrame(() => {
       const body = contentRef.current?.parentElement;
       if (to === 'top') body?.scrollTo({ top: 0 });
-      else body?.querySelector('.text-field--error')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      else body?.querySelector('.text-field--error, .field-error')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
 
   const goTo = (next: 'delivery' | 'payment') => {
@@ -81,26 +76,21 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
       postcode: details.postcode.trim() ? undefined : 'Please enter your postcode',
     };
     setDetailErrors(errors);
+    setOrderError('');
     if (hasErrors(errors)) scrollBody('first-error');
     else goTo('payment');
   };
 
-  const pay = () => {
-    if (method === 'card') {
-      const errors = cardErrors(card);
-      setCardErrs(errors);
-      if (hasErrors(errors)) return scrollBody('first-error');
+  const submitOrder = async () => {
+    if (!ageConfirmed) {
+      setAgeError(`Please confirm you are ${store.minimumAge} or older.`);
+      return scrollBody('first-error');
     }
-    setPaying(true);
-    // DEMO: pretend to wait for the payment provider. Only the last 4 card digits are kept.
-    window.setTimeout(() => {
-      const now = Date.now();
-      const order: Order = {
-        id: newId('o'),
-        number: String(Math.floor(1000 + Math.random() * 9000)),
-        createdAt: now,
-        lines: items.map(({ product, qty }) => ({ productId: product.id, name: product.name, price: product.price, qty })),
-        total,
+    setPlacing(true);
+    setOrderError('');
+    try {
+      const order = await placeOrder({
+        lines: items.map(({ product, qty }) => ({ productId: product.id, qty })),
         deliveryTime: when,
         customer: { name: details.name.trim(), phone: details.phone.trim() },
         address: {
@@ -109,13 +99,21 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
           postcode: details.postcode.trim(),
           instructions: details.instructions.trim(),
         },
-        payment: method === 'card' ? `Card •••• ${digitsOnly(card.number).slice(-4)}` : 'Apple Pay / Google Pay',
-        statusTimes: [now],
-      };
-      saveOrder(order);
+        ageConfirmed,
+      });
       clearCart();
       onPaid(order.id);
-    }, 1500);
+    } catch (error) {
+      setPlacing(false);
+      if (error instanceof ApiError && error.status === 409) {
+        // Some products were removed from the shop: reload the menu so they drop out of the cart.
+        await loadMenu();
+        setOrderError('Some items are no longer available and were removed from your cart. Please check your order.');
+        goTo('delivery');
+      } else {
+        setOrderError(errorMessage(error));
+      }
+    }
   };
 
   const isDeliveryStep = step === 'delivery';
@@ -124,21 +122,26 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
   return (
     <BottomSheet
       title={title}
-      onClose={paying ? () => {} : onClose}
-      onBack={!isDeliveryStep && !paying ? () => goTo('delivery') : undefined}
+      onClose={placing ? () => {} : onClose}
+      onBack={!isDeliveryStep && !placing ? () => goTo('delivery') : undefined}
       action={
         isDeliveryStep ? (
           <button className="sheet-action" onClick={continueToPayment} disabled={items.length === 0}>
             Continue
           </button>
         ) : (
-          <button className="sheet-action" onClick={pay} disabled={paying || items.length === 0}>
-            {paying ? 'Processing…' : `Pay ${formatPrice(total)}`}
+          <button className="sheet-action" onClick={submitOrder} disabled={placing || items.length === 0}>
+            {placing ? 'Placing order…' : `Place Order · ${formatPrice(total)}`}
           </button>
         )
       }
     >
       <div className="checkout" ref={contentRef}>
+        {isDeliveryStep && orderError && (
+          <p className="co-alert" role="alert">
+            {orderError}
+          </p>
+        )}
         {isDeliveryStep ? (
           <>
             <h3 className="co-title co-title--first">Your Items</h3>
@@ -175,7 +178,15 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
             </div>
 
             <h3 className="co-title">Delivery Details</h3>
-            <TextField label="Full Name *" error={detailErrors.name} value={details.name} onChange={(e) => setDetail('name', e.target.value)} autoComplete="name" />
+            {/* maxLength values match the server's limits (worker/orders.ts). */}
+            <TextField
+              label="Full Name *"
+              error={detailErrors.name}
+              value={details.name}
+              onChange={(e) => setDetail('name', e.target.value)}
+              autoComplete="name"
+              maxLength={80}
+            />
             <div className="co-field">
               <span className="co-label">Mobile Number *</span>
               <div className={`phone-field${detailErrors.phone ? ' text-field--error' : ''}`}>
@@ -187,6 +198,7 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
                   inputMode="tel"
                   autoComplete="tel-national"
                   aria-label="Mobile number"
+                  maxLength={30}
                 />
               </div>
               {detailErrors.phone && <span className="field-error">{detailErrors.phone}</span>}
@@ -198,9 +210,17 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
               onChange={(e) => setDetail('street', e.target.value)}
               autoComplete="address-line1"
               placeholder="e.g. 12 Example Street, Unit 3"
+              maxLength={120}
             />
             <div className="co-row2 co-row2--wide-first">
-              <TextField label="Suburb *" error={detailErrors.suburb} value={details.suburb} onChange={(e) => setDetail('suburb', e.target.value)} autoComplete="address-level2" />
+              <TextField
+                label="Suburb *"
+                error={detailErrors.suburb}
+                value={details.suburb}
+                onChange={(e) => setDetail('suburb', e.target.value)}
+                autoComplete="address-level2"
+                maxLength={60}
+              />
               <TextField
                 label="Postcode *"
                 error={detailErrors.postcode}
@@ -208,6 +228,7 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
                 onChange={(e) => setDetail('postcode', e.target.value)}
                 autoComplete="postal-code"
                 inputMode="numeric"
+                maxLength={12}
               />
             </div>
             <label className="co-field">
@@ -218,6 +239,7 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
                 value={details.instructions}
                 onChange={(e) => setDetail('instructions', e.target.value)}
                 placeholder="e.g. Leave at the front door"
+                maxLength={300}
               />
             </label>
           </>
@@ -236,54 +258,14 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
               </button>
             </div>
 
-            <h3 className="co-title">Payment Method</h3>
-            <div className="pay-methods" role="radiogroup" aria-label="Payment method">
-              <button role="radio" aria-checked={method === 'card'} className={`pay-method${method === 'card' ? ' pay-method--on' : ''}`} onClick={() => setMethod('card')}>
-                <CreditCardIcon />
-                Credit / Debit Card
-              </button>
-              <button role="radio" aria-checked={method === 'wallet'} className={`pay-method${method === 'wallet' ? ' pay-method--on' : ''}`} onClick={() => setMethod('wallet')}>
-                <WalletIcon />
-                Apple Pay / Google Pay
-              </button>
+            <h3 className="co-title">Payment</h3>
+            <div className="co-box">
+              <WalletIcon />
+              <div className="co-grow">
+                <div className="co-strong">Pay on delivery</div>
+                <div className="co-muted">Pay the driver by cash or card when your order arrives.</div>
+              </div>
             </div>
-
-            {method === 'card' ? (
-              <>
-                <TextField
-                  label="Card Number"
-                  error={cardErrs.number}
-                  value={card.number}
-                  onChange={(e) => setCardField('number', formatCardNumber(e.target.value))}
-                  inputMode="numeric"
-                  autoComplete="cc-number"
-                  placeholder="1234 1234 1234 1234"
-                />
-                <div className="co-row2">
-                  <TextField
-                    label="Expiry Date"
-                    error={cardErrs.expiry}
-                    value={card.expiry}
-                    onChange={(e) => setCardField('expiry', formatExpiry(e.target.value))}
-                    inputMode="numeric"
-                    autoComplete="cc-exp"
-                    placeholder="MM / YY"
-                  />
-                  <TextField
-                    label="Security Code"
-                    error={cardErrs.cvc}
-                    value={card.cvc}
-                    onChange={(e) => setCardField('cvc', digitsOnly(e.target.value).slice(0, 4))}
-                    inputMode="numeric"
-                    autoComplete="cc-csc"
-                    placeholder="CVC"
-                  />
-                </div>
-                <TextField label="Name on Card" error={cardErrs.name} value={card.name} onChange={(e) => setCardField('name', e.target.value)} autoComplete="cc-name" />
-              </>
-            ) : (
-              <p className="pay-wallet-note">You will confirm the payment in Apple Pay or Google Pay on your device.</p>
-            )}
 
             <div className="co-summary">
               <div className="co-sum-row co-sum-total">
@@ -291,19 +273,34 @@ export function CheckoutSheet({ onClose, onPaid }: { onClose: () => void; onPaid
                 <span>{formatPrice(total)}</span>
               </div>
             </div>
-            <p className="pay-secure">
-              <LockIcon />
-              Payments are encrypted and processed by a secure payment provider.
-            </p>
-            <p className="co-demo">Demo: no real payment is taken. Test card: 4242 4242 4242 4242, any future expiry date, any 3 digits.</p>
+
+            <label className={`co-check${ageError ? ' co-check--error' : ''}`}>
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(e) => {
+                  setAgeConfirmed(e.target.checked);
+                  setAgeError('');
+                }}
+              />
+              <span>
+                I am {store.minimumAge} or older and will show photo ID to the driver.
+              </span>
+            </label>
+            {ageError && <span className="field-error">{ageError}</span>}
+            {orderError && (
+              <p className="co-alert" role="alert">
+                {orderError}
+              </p>
+            )}
           </>
         )}
       </div>
 
-      {paying && (
+      {placing && (
         <div className="pay-processing" role="status">
           <span className="spinner" />
-          Processing payment…
+          Placing your order…
         </div>
       )}
       {changingTime && <FulfillmentModal onClose={() => setChangingTime(false)} />}

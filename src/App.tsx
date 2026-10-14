@@ -1,22 +1,20 @@
 import { useState } from 'react';
 import { AdminPage } from './admin/AdminPage';
-import { store } from './config/store';
 import { useRoute } from './lib/router';
-import { LoginPage, SignUpPage } from './store/AuthPages';
 import { NoticePage } from './store/NoticePage';
 import { MyOrdersPage, OrderTrackingPage } from './store/OrderPages';
 import { StorePage } from './store/StorePage';
 
-const NOTICE_SEEN_KEY = 'ordering-demo.notice-seen';
+const AGE_CONFIRMED_KEY = 'shop.age-confirmed';
 
 export default function App() {
   const route = useRoute();
-  // The store notice opens once per browser session (like the original site's opening notice).
-  const [noticeOpen, setNoticeOpen] = useState(() => store.notice.showOnLoad && sessionStorage.getItem(NOTICE_SEEN_KEY) !== '1');
+  // The age check (with the store notice) is shown once per browser session.
+  const [ageConfirmed, setAgeConfirmed] = useState(() => sessionStorage.getItem(AGE_CONFIRMED_KEY) === '1');
 
-  const closeNotice = () => {
-    sessionStorage.setItem(NOTICE_SEEN_KEY, '1');
-    setNoticeOpen(false);
+  const confirmAge = () => {
+    sessionStorage.setItem(AGE_CONFIRMED_KEY, '1');
+    setAgeConfirmed(true);
   };
 
   if (route.startsWith('/admin')) return <AdminPage />;
@@ -25,11 +23,9 @@ export default function App() {
   return (
     <>
       <StorePage />
-      {route === '/login' && <LoginPage />}
-      {route === '/signup' && <SignUpPage />}
       {route === '/orders' && <MyOrdersPage />}
-      {route.startsWith('/order/') && <OrderTrackingPage orderId={route.slice('/order/'.length)} />}
-      {noticeOpen && <NoticePage onClose={closeNotice} />}
+      {route.startsWith('/order/') && <OrderTrackingPage key={route} orderId={route.slice('/order/'.length)} />}
+      {!ageConfirmed && <NoticePage onConfirm={confirmAge} />}
     </>
   );
 }

@@ -1,44 +1,38 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeftIcon, CloseIcon } from '../components/icons';
 import { Dialog, Modal, PageShell } from '../components/overlays';
 import { store } from '../config/store';
+import { errorMessage } from '../lib/api';
 import { formatPrice } from '../lib/format';
-import { deleteCategory, deleteProduct, newId, resetMenu, saveCategory, saveProduct, useMenu } from '../lib/menuStore';
-import { isDelivered, useOrders } from '../lib/orders';
+import { deleteCategory, deleteProduct, loadMenu, newId, saveCategory, saveProduct, useMenu, useMenuStatus } from '../lib/menuStore';
+import { isActive, useOwnerOrders } from '../lib/orders';
+import { checkOwnerSession, signIn, signOut, useOwnerSession } from '../lib/ownerSession';
 import { navigate, useRoute } from '../lib/router';
 import type { Category, Product } from '../lib/types';
 import { OrdersManager } from './OrdersManager';
 import { ProductForm } from './ProductForm';
 
-const UNLOCK_KEY = 'ordering-demo.admin-unlocked';
-
 export function AdminPage() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(UNLOCK_KEY) === '1');
+  const session = useOwnerSession();
 
-  if (!unlocked) {
+  useEffect(() => {
+    if (session === 'checking') checkOwnerSession();
+  }, [session]);
+
+  if (session === 'checking') {
     return (
-      <AdminGate
-        onUnlock={() => {
-          sessionStorage.setItem(UNLOCK_KEY, '1');
-          setUnlocked(true);
-        }}
-      />
+      <div className="admin-loading" role="status" aria-label="Loading">
+        <span className="spinner" />
+      </div>
     );
   }
-  return (
-    <AdminShell
-      onLock={() => {
-        sessionStorage.removeItem(UNLOCK_KEY);
-        setUnlocked(false);
-      }}
-    />
-  );
+  return session === 'signed-in' ? <AdminShell /> : <AdminGate />;
 }
 
 // #/admin shows Orders (the owner's day-to-day page); #/admin/menu shows the menu editor.
-function AdminShell({ onLock }: { onLock: () => void }) {
+function AdminShell() {
   const onMenu = useRoute() === '/admin/menu';
-  const activeOrders = useOrders().filter((o) => !isDelivered(o)).length;
+  const activeOrders = useOwnerOrders().orders.filter(isActive).length;
 
   return (
     <div className="admin">
@@ -48,8 +42,8 @@ function AdminShell({ onLock }: { onLock: () => void }) {
           View Store
         </button>
         <h1>Shop Admin</h1>
-        <button className="admin-header-btn" onClick={onLock}>
-          Lock
+        <button className="admin-header-btn" onClick={() => signOut()}>
+          Log Out
         </button>
       </header>
       <nav className="admin-tabs" aria-label="Admin sections">
@@ -66,15 +60,22 @@ function AdminShell({ onLock }: { onLock: () => void }) {
   );
 }
 
-// DEMO ONLY: a passcode checked in the browser is not real security.
-function AdminGate({ onUnlock }: { onUnlock: () => void }) {
-  const [code, setCode] = useState('');
+/** Owner login. The password is checked by the server, which then keeps the owner signed in on this device. */
+function AdminGate() {
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (code === store.adminPasscode) onUnlock();
-    else setError('Wrong passcode, please try again.');
+    if (!password) return setError('Please enter the owner password.');
+    setBusy(true);
+    try {
+      await signIn(password);
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
   };
 
   return (
@@ -82,51 +83,50 @@ function AdminGate({ onUnlock }: { onUnlock: () => void }) {
       title="Owner Login"
       onClose={() => navigate('/')}
       footer={
-        <button className="btn-block btn-black btn-bold" type="submit" form="owner-login">
-          Unlock
+        <button className="btn-block btn-black btn-bold" type="submit" form="owner-login" disabled={busy}>
+          {busy ? 'Logging in…' : 'Log In'}
         </button>
       }
     >
       <form id="owner-login" className="auth" onSubmit={submit}>
         <h2 className="auth-title">Manage your shop</h2>
-        <p className="auth-required">Enter the owner passcode to manage orders and products.</p>
+        <p className="auth-required">Enter the owner password to manage orders and products.</p>
         <input
           className={`text-field auth-password${error ? ' text-field--error' : ''}`}
           type="password"
-          placeholder="* Passcode"
-          aria-label="Passcode"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          placeholder="* Password"
+          aria-label="Password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setError('');
+          }}
           autoFocus
         />
         {error && <span className="field-error">{error}</span>}
-        <p className="co-demo">Demo passcode: {store.adminPasscode}</p>
       </form>
     </PageShell>
   );
 }
 
-const STORAGE_FULL =
-  'Could not save: this browser’s storage is full. Use smaller images or remove some products. (The real site will store the menu on a server.)';
-
 type Confirm = { title: string; message: string; okText: string; onOk: () => void };
 
 function MenuManager() {
   const menu = useMenu();
+  const menuStatus = useMenuStatus();
   const [editing, setEditing] = useState<{ product: Product; isNew: boolean } | null>(null);
   const [category, setCategory] = useState<{ category: Category; isNew: boolean } | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [error, setError] = useState('');
 
-  // Runs a save; shows a message instead of crashing when storage is full.
-  const attempt = (save: () => void) => {
+  // Runs a change confirmed in a dialog; shows what went wrong if the server refuses it.
+  const attempt = async (change: () => Promise<void>) => {
     try {
-      save();
+      await change();
       setError('');
-      return true;
-    } catch {
-      setError(STORAGE_FULL);
-      return false;
+    } catch (err) {
+      setError(errorMessage(err));
     }
   };
 
@@ -154,14 +154,6 @@ function MenuManager() {
       onOk: () => attempt(() => deleteCategory(c.id)),
     });
 
-  const askReset = () =>
-    setConfirm({
-      title: 'Reset menu',
-      message: 'Replace the whole menu with the sample placeholder menu? All your changes will be lost.',
-      okText: 'Reset',
-      onOk: () => attempt(resetMenu),
-    });
-
   return (
     <>
       <main className="admin-main">
@@ -169,7 +161,7 @@ function MenuManager() {
           <div>
             <h2 className="admin-title">Products</h2>
             <p className="admin-sub">
-              {menu.products.length} products in {menu.categories.length} categories · Demo: changes are saved in this browser only.
+              {menu.products.length} products in {menu.categories.length} categories · Changes show in the shop straight away.
             </p>
           </div>
           <div className="admin-actions">
@@ -191,7 +183,18 @@ function MenuManager() {
           </div>
         )}
 
-        {menu.categories.length === 0 && <div className="admin-cat admin-empty">No categories yet. Add a category first, then add products to it.</div>}
+        {menuStatus === 'loading' && <div className="admin-cat admin-empty">Loading products…</div>}
+        {menuStatus === 'error' && (
+          <div className="admin-cat admin-empty">
+            We can’t load the products right now.{' '}
+            <button className="link-btn" onClick={() => loadMenu()}>
+              Try again
+            </button>
+          </div>
+        )}
+        {menuStatus === 'ready' && menu.categories.length === 0 && (
+          <div className="admin-cat admin-empty">No categories yet. Add a category first, then add products to it.</div>
+        )}
 
         {menu.categories.map((c) => {
           const products = menu.products.filter((p) => p.categoryId === c.id);
@@ -219,7 +222,7 @@ function MenuManager() {
               ) : (
                 products.map((p) => (
                   <div key={p.id} className="admin-row">
-                    <img className="admin-thumb" src={p.image || store.productPlaceholder} alt="" />
+                    <img className="admin-thumb" src={p.image || store.productPlaceholder} alt="" loading="lazy" />
                     <div className="admin-row-main">
                       <div className="admin-row-name">{p.name}</div>
                       {p.description && <div className="admin-row-desc">{p.description}</div>}
@@ -248,12 +251,6 @@ function MenuManager() {
             </section>
           );
         })}
-
-        <div className="admin-foot">
-          <button className="link-btn" onClick={askReset}>
-            Reset to sample menu
-          </button>
-        </div>
       </main>
 
       {editing && (
@@ -261,17 +258,12 @@ function MenuManager() {
           product={editing.product}
           isNew={editing.isNew}
           categories={menu.categories}
-          onSave={(p) => attempt(() => saveProduct(p))}
+          onSave={saveProduct}
           onClose={() => setEditing(null)}
         />
       )}
       {category && (
-        <CategoryForm
-          category={category.category}
-          isNew={category.isNew}
-          onSave={(c) => attempt(() => saveCategory(c))}
-          onClose={() => setCategory(null)}
-        />
+        <CategoryForm category={category.category} isNew={category.isNew} onSave={saveCategory} onClose={() => setCategory(null)} />
       )}
       {confirm && (
         <Dialog
@@ -295,18 +287,27 @@ function MenuManager() {
 interface CategoryFormProps {
   category: Category;
   isNew: boolean;
-  onSave: (category: Category) => boolean;
+  /** Rejects with a message to show if the server refuses the change. */
+  onSave: (category: Category) => Promise<void>;
   onClose: () => void;
 }
 
 function CategoryForm({ category, isNew, onSave, onClose }: CategoryFormProps) {
   const [name, setName] = useState(category.name);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setError('Please enter a category name.');
-    if (onSave({ ...category, name: name.trim() })) onClose();
+    setSaving(true);
+    try {
+      await onSave({ ...category, name: name.trim() });
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+      setSaving(false);
+    }
   };
 
   return (
@@ -321,7 +322,17 @@ function CategoryForm({ category, isNew, onSave, onClose }: CategoryFormProps) {
         <div className="form-body">
           <label className="field">
             <span className="field-label">Category name *</span>
-            <input className={`input${error ? ' input--error' : ''}`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. DRINKS" autoFocus />
+            <input
+              className={`input${error ? ' input--error' : ''}`}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setError('');
+              }}
+              placeholder="e.g. LIGHTERS"
+              maxLength={40}
+              autoFocus
+            />
             {error && <span className="field-error">{error}</span>}
           </label>
         </div>
@@ -329,8 +340,8 @@ function CategoryForm({ category, isNew, onSave, onClose }: CategoryFormProps) {
           <button type="button" className="btn-md" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-md btn-md--black">
-            {isNew ? 'Add Category' : 'Save'}
+          <button type="submit" className="btn-md btn-md--black" disabled={saving}>
+            {saving ? 'Saving…' : isNew ? 'Add Category' : 'Save'}
           </button>
         </div>
       </form>

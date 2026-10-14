@@ -1,105 +1,198 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { api, ApiError } from './api';
+import { isActive } from './delivery';
+import { ownerApi } from './ownerSession';
+import type { NewOrder, Order } from './types';
 
-export interface OrderLine {
-  productId: string;
-  name: string;
-  price: number;
-  qty: number;
-}
+export { DELIVERY_STEPS, deliveryStep, isActive, isDelivered } from './delivery';
 
-export interface Order {
-  id: string;
-  number: string;
-  createdAt: number;
-  lines: OrderLine[];
-  total: number;
-  deliveryTime: string;
-  customer: { name: string; phone: string };
-  address: { street: string; suburb: string; postcode: string; instructions: string };
-  /** e.g. "Card •••• 4242". Card details themselves are never stored. */
-  payment: string;
-  /** When each delivery step was reached (index = DELIVERY_STEPS index); the last one is the current step. */
-  statusTimes: number[];
-}
+// Orders live on the server. Pages that show order status check for changes regularly,
+// but only while the page is visible.
 
-// Demo: orders are kept in this browser's localStorage (the live site will use a server).
-// v2: delivery status is set by the owner, and delivery is free.
-const KEY = 'ordering-demo.orders.v2';
 const listeners = new Set<() => void>();
-
-function readSaved(): Order[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Order[];
-  } catch {
-    // Ignore: start with no order history.
-  }
-  return [];
-}
-
-let orders = readSaved();
 
 function emit() {
   listeners.forEach((listener) => listener());
 }
-
-function commit(next: Order[]) {
-  orders = next;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(orders));
-  } catch {
-    // Still shown for this visit if storage is unavailable.
-  }
-  emit();
-}
-
-// Keep other open tabs in sync, e.g. the owner's Orders page and the customer's tracking page.
-window.addEventListener('storage', (event) => {
-  if (event.key === KEY) {
-    orders = readSaved();
-    emit();
-  }
-});
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-/** All orders, newest first. */
-export function useOrders(): Order[] {
-  return useSyncExternalStore(subscribe, () => orders);
+/** Runs `task` now, every `ms`, and whenever the page becomes visible again. Returns a stop function. */
+function poll(task: () => void, ms: number) {
+  const tick = () => {
+    if (!document.hidden) task();
+  };
+  tick();
+  const timer = window.setInterval(tick, ms);
+  document.addEventListener('visibilitychange', tick);
+  return () => {
+    window.clearInterval(timer);
+    document.removeEventListener('visibilitychange', tick);
+  };
 }
 
-export function saveOrder(order: Order) {
-  commit([order, ...orders]);
+/** A poll shared by every component that uses it; for useEffect(poller, []). */
+function sharedPoller(task: () => void, ms: number) {
+  let users = 0;
+  let stop = () => {};
+  return () => {
+    if (users++ === 0) stop = poll(task, ms);
+    return () => {
+      if (--users === 0) stop();
+    };
+  };
+}
+
+// ---------- Customer ----------
+
+// This browser only remembers the ids of the orders placed in it; the details come from the shop.
+const MINE_KEY = 'shop.my-orders';
+
+function readMine(): string[] {
+  try {
+    const ids: unknown = JSON.parse(localStorage.getItem(MINE_KEY) ?? '[]');
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string').slice(0, 30) : [];
+  } catch {
+    return [];
+  }
+}
+
+interface CustomerState {
+  /** Ids of the orders placed in this browser, newest first. */
+  mine: string[];
+  mineLoaded: boolean;
+  orders: Map<string, Order>;
+}
+
+let customer: CustomerState = { mine: readMine(), mineLoaded: false, orders: new Map() };
+
+function updateCustomer(changes: Partial<CustomerState>, fetched: Order[] = []) {
+  const orders = new Map(customer.orders);
+  fetched.forEach((order) => orders.set(order.id, order));
+  customer = { ...customer, ...changes, orders };
+  emit();
+}
+
+// The first check loads every order; after that only the ones still on their way.
+async function refreshMine() {
+  const ids = customer.mineLoaded
+    ? customer.mine.filter((id) => {
+        const order = customer.orders.get(id);
+        return !order || isActive(order);
+      })
+    : customer.mine;
+  if (ids.length === 0) {
+    if (!customer.mineLoaded) updateCustomer({ mineLoaded: true });
+    return;
+  }
+  try {
+    const { orders } = await api<{ orders: Order[] }>('orders/lookup', { body: { ids } });
+    updateCustomer({ mineLoaded: true }, orders);
+  } catch {
+    // Keep what is shown; the next check tries again.
+  }
+}
+
+const myOrdersPoller = sharedPoller(() => void refreshMine(), 30_000);
+
+/** Orders placed in this browser, newest first (My Orders and the "Track" pill). */
+export function useMyOrders(): { orders: Order[]; loaded: boolean } {
+  useEffect(myOrdersPoller, []);
+  const state = useSyncExternalStore(subscribe, () => customer);
+  const orders = useMemo(() => state.mine.flatMap((id) => state.orders.get(id) ?? []), [state]);
+  return { orders, loaded: state.mineLoaded };
+}
+
+export type TrackStatus = 'loading' | 'ready' | 'missing' | 'error';
+
+/** One order for its tracking page, checked every 15 seconds until it is delivered or cancelled. */
+export function useTrackedOrder(id: string): { order?: Order; status: TrackStatus } {
+  const order = useSyncExternalStore(subscribe, () => customer.orders.get(id));
+  const [status, setStatus] = useState<TrackStatus>('loading');
+
+  useEffect(() => {
+    let stopped = false;
+    const stop = poll(async () => {
+      const current = customer.orders.get(id);
+      if (current && !isActive(current)) return; // finished: nothing more will change
+      try {
+        const fresh = await api<Order>(`orders/${encodeURIComponent(id)}`);
+        if (!stopped) updateCustomer({}, [fresh]);
+      } catch (error) {
+        if (!stopped && !customer.orders.has(id)) setStatus(error instanceof ApiError && error.status === 404 ? 'missing' : 'error');
+      }
+    }, 15_000);
+    return () => {
+      stopped = true;
+      stop();
+    };
+  }, [id]);
+
+  return { order, status: order ? 'ready' : status };
+}
+
+/** Customer checkout. The shop works out the prices and total itself. */
+export async function placeOrder(input: NewOrder): Promise<Order> {
+  const order = await api<Order>('orders', { body: input });
+  const mine = [order.id, ...customer.mine.filter((id) => id !== order.id)].slice(0, 30);
+  try {
+    localStorage.setItem(MINE_KEY, JSON.stringify(mine));
+  } catch {
+    // Still listed for this visit if storage is unavailable.
+  }
+  updateCustomer({ mine }, [order]);
+  return order;
+}
+
+// ---------- Owner ----------
+
+interface OwnerOrders {
+  /** Every order still to deliver plus the latest finished ones, newest first. */
+  orders: Order[];
+  status: 'loading' | 'ready' | 'error';
+}
+
+let owner: OwnerOrders = { orders: [], status: 'loading' };
+/** Server time of the last check; the next check asks only for orders changed since. */
+let cursor = 0;
+
+function mergeOwnerOrders(changed: Order[]) {
+  const byId = new Map(owner.orders.map((order) => [order.id, order]));
+  changed.forEach((order) => byId.set(order.id, order));
+  owner = { orders: [...byId.values()].sort((a, b) => b.createdAt - a.createdAt), status: 'ready' };
+  emit();
+}
+
+async function refreshOwnerOrders() {
+  try {
+    const result = await ownerApi<{ orders: Order[]; cursor: number }>(cursor ? `admin/orders?since=${cursor}` : 'admin/orders');
+    cursor = result.cursor;
+    if (result.orders.length > 0 || owner.status !== 'ready') mergeOwnerOrders(result.orders);
+  } catch {
+    if (owner.status === 'loading') {
+      owner = { ...owner, status: 'error' };
+      emit();
+    }
+  }
+}
+
+const ownerOrdersPoller = sharedPoller(() => void refreshOwnerOrders(), 10_000);
+
+/** Owner: all orders, checked for new orders and changes every 10 seconds. */
+export function useOwnerOrders(): OwnerOrders {
+  useEffect(ownerOrdersPoller, []);
+  return useSyncExternalStore(subscribe, () => owner);
 }
 
 /** Owner: moves an order to a delivery step. Moving back (to fix a mistake) clears the later steps. */
-export function setOrderStep(orderId: string, step: number) {
-  commit(
-    orders.map((order) => {
-      if (order.id !== orderId) return order;
-      const statusTimes = order.statusTimes.slice(0, step + 1);
-      while (statusTimes.length <= step) statusTimes.push(Date.now());
-      return { ...order, statusTimes };
-    }),
-  );
+export async function setOrderStep(orderId: string, step: number) {
+  mergeOwnerOrders([await ownerApi<Order>(`admin/orders/${orderId}`, { method: 'PATCH', body: { step } })]);
 }
 
-// Delivery progress shown to the customer and updated by the owner on the Orders page.
-export const DELIVERY_STEPS = [
-  { label: 'Order Confirmed', detail: 'Payment received. Your order is confirmed.' },
-  { label: 'Packing', detail: 'Your items are being packed.' },
-  { label: 'Out for Delivery', detail: 'Your order is on its way to you.' },
-  { label: 'Delivered', detail: 'Your order has been delivered.' },
-];
-
-/** Index into DELIVERY_STEPS. */
-export function deliveryStep(order: Order) {
-  return order.statusTimes.length - 1;
-}
-
-export function isDelivered(order: Order) {
-  return deliveryStep(order) === DELIVERY_STEPS.length - 1;
+/** Owner: cancels an order, or restores a cancelled one. */
+export async function setOrderCancelled(orderId: string, cancelled: boolean) {
+  mergeOwnerOrders([await ownerApi<Order>(`admin/orders/${orderId}`, { method: 'PATCH', body: { cancelled } })]);
 }

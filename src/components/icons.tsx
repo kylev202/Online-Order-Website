@@ -36,21 +36,6 @@ export const GlobeIcon = (p: IconProps) => (
   </Icon>
 );
 
-export const UserIcon = (p: IconProps) => (
-  <Icon {...p} strokeWidth={2}>
-    <circle cx="12" cy="8.5" r="3.5" />
-    <path d="M5.5 19.5c1.1-3.1 3.6-4.9 6.5-4.9s5.4 1.8 6.5 4.9" />
-  </Icon>
-);
-
-/** Solid grey person, used in the desktop "Login" button. */
-export const UserSolidIcon = (p: IconProps) => (
-  <Icon {...p} stroke="none">
-    <circle cx="12" cy="7.5" r="4.5" fill="#a6a6a6" />
-    <path d="M3.5 21.5c.8-4.6 4.2-7.5 8.5-7.5s7.7 2.9 8.5 7.5z" fill="#a6a6a6" />
-  </Icon>
-);
-
 export const SearchIcon = (p: IconProps) => (
   <Icon {...p} strokeWidth={2.2}>
     <circle cx="10.5" cy="10.5" r="6.5" />
@@ -87,24 +72,10 @@ export const TruckIcon = (p: IconProps) => (
   </Icon>
 );
 
-export const CreditCardIcon = (p: IconProps) => (
-  <Icon {...p}>
-    <rect x="2.5" y="5" width="19" height="14" rx="2" />
-    <path d="M2.5 9.5h19M6 15h4" />
-  </Icon>
-);
-
 export const WalletIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M4.5 5H17M3 6.5A1.5 1.5 0 0 1 4.5 5M3 6.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H4.5A1.5 1.5 0 0 1 3 6.5z" />
     <circle cx="16" cy="13.5" r="1.2" fill="currentColor" />
-  </Icon>
-);
-
-export const LockIcon = (p: IconProps) => (
-  <Icon {...p} strokeWidth={2}>
-    <rect x="5" y="10.5" width="14" height="10" rx="2" />
-    <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
   </Icon>
 );
 

@@ -3,6 +3,7 @@ import { TagGroups } from '../components/controls';
 import { CloseIcon } from '../components/icons';
 import { Modal } from '../components/overlays';
 import { store } from '../config/store';
+import { errorMessage } from '../lib/api';
 import { parsePrice } from '../lib/format';
 import { resizeImage } from '../lib/image';
 import type { Category, Product } from '../lib/types';
@@ -11,8 +12,8 @@ interface Props {
   product: Product;
   isNew: boolean;
   categories: Category[];
-  /** Returns false if saving failed (the form then stays open). */
-  onSave: (product: Product) => boolean;
+  /** Rejects with a message to show if saving failed (the form then stays open). */
+  onSave: (product: Product) => Promise<void>;
   onClose: () => void;
 }
 
@@ -27,6 +28,8 @@ export function ProductForm({ product, isNew, categories, onSave, onClose }: Pro
   const [image, setImage] = useState(product.image);
   const [errors, setErrors] = useState<Errors>({});
   const [loadingImage, setLoadingImage] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const toggleTag = (tag: string) => setTags((t) => (t.includes(tag) ? t.filter((x) => x !== tag) : [...t, tag]));
   const clearError = (field: keyof Errors) => setErrors((x) => ({ ...x, [field]: undefined }));
@@ -46,7 +49,7 @@ export function ProductForm({ product, isNew, categories, onSave, onClose }: Pro
     }
   };
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     const cents = parsePrice(price);
     const next: Errors = {
@@ -56,8 +59,15 @@ export function ProductForm({ product, isNew, categories, onSave, onClose }: Pro
     };
     setErrors(next);
     if (next.name || next.price || next.category || cents === null) return;
-    const saved = onSave({ ...product, name: name.trim(), description: description.trim(), price: cents, categoryId, tags, image });
-    if (saved) onClose();
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave({ ...product, name: name.trim(), description: description.trim(), price: cents, categoryId, tags, image });
+      onClose();
+    } catch (err) {
+      setSaveError(errorMessage(err));
+      setSaving(false);
+    }
   };
 
   return (
@@ -99,12 +109,13 @@ export function ProductForm({ product, isNew, categories, onSave, onClose }: Pro
                 setName(e.target.value);
                 clearError('name');
               }}
+              maxLength={80}
               autoFocus={isNew}
             />
           </Field>
 
           <Field label="Description" hint="Shown under the name, e.g. a short description or the dish name in another language.">
-            <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} />
           </Field>
 
           <div className="field-row">
@@ -149,12 +160,17 @@ export function ProductForm({ product, isNew, categories, onSave, onClose }: Pro
           </div>
         </div>
 
+        {saveError && (
+          <p className="form-error" role="alert">
+            {saveError}
+          </p>
+        )}
         <div className="form-foot">
           <button type="button" className="btn-md" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-md btn-md--black" disabled={loadingImage}>
-            {isNew ? 'Add Product' : 'Save Changes'}
+          <button type="submit" className="btn-md btn-md--black" disabled={loadingImage || saving}>
+            {saving ? 'Saving…' : isNew ? 'Add Product' : 'Save Changes'}
           </button>
         </div>
       </form>

@@ -1,8 +1,8 @@
 /**
- * Reads an uploaded photo and shrinks it to at most `maxSize` px on its longest side,
- * so product images stay small enough to keep in the browser's storage (demo only).
+ * Reads a chosen photo and shrinks it to at most `maxSize` px on its longest side,
+ * so uploads stay small and product pages load quickly.
  */
-export function resizeImage(file: File, maxSize = 600): Promise<string> {
+export function resizeImage(file: File, maxSize = 800): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();

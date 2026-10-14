@@ -11,12 +11,6 @@ export function SideMenu({ onClose }: { onClose: () => void }) {
   return (
     <Drawer side="left" className="side-menu" label="Menu" onClose={onClose}>
       <div className="side-body">
-        <button className="side-btn side-btn--black" onClick={() => go('/login')}>
-          Login
-        </button>
-        <button className="side-btn" onClick={() => go('/signup')}>
-          Sign Up
-        </button>
         <button className="side-btn" onClick={() => go('/orders')}>
           My Orders
         </button>

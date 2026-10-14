@@ -1,8 +1,9 @@
-import { defineConfig } from 'vite';
+import { cloudflare } from '@cloudflare/vite-plugin';
 import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
 
-// base './' lets the built site be hosted from any folder (routing uses the URL hash).
+// The Cloudflare plugin runs the API (worker/) inside the dev server, with a local database
+// and image store, and builds the site and the API together for `wrangler deploy`.
 export default defineConfig({
-  plugins: [react()],
-  base: './',
+  plugins: [react(), cloudflare()],
 });
